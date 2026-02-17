@@ -31,3 +31,6 @@ ROC-AUC is emphasized because it measures ranking quality under class imbalance.
 pip install -r requirements.txt
 python main.py
 
+## Dataset
+
+https://ai.stanford.edu/~amaas/data/sentiment/
