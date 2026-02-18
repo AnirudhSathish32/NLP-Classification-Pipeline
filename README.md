@@ -25,7 +25,7 @@ Raw Data → Cleaning → TF-IDF → Models → CV → Evaluation → Model Sele
 
 ROC-AUC is emphasized because it measures ranking quality under class imbalance.
 
-## Running
+## How to Run
 
 ```bash
 docker compose up --build
