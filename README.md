@@ -28,8 +28,7 @@ ROC-AUC is emphasized because it measures ranking quality under class imbalance.
 ## Running
 
 ```bash
-pip install -r requirements.txt
-python main.py
+docker compose up --build
 
 ## Dataset
 
