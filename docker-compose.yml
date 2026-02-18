@@ -1,0 +1,11 @@
+version: '3.9'
+
+services:
+  nlp-pipeline:
+    build: .
+    container_name: nlp_pipeline
+    volumes:
+      - .:/app   # mounts current folder into container
+    stdin_open: true
+    tty: true
+    command: python main.py
