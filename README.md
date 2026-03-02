@@ -25,11 +25,10 @@ Raw Data → Cleaning → TF-IDF → Models → CV → Evaluation → Model Sele
 
 ROC-AUC is emphasized because it measures ranking quality under class imbalance.
 
-## Running
+## How to Run
 
 ```bash
-pip install -r requirements.txt
-python main.py
+docker compose up --build
 
 ## Dataset
 
