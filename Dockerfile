@@ -14,5 +14,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy the rest of the project into the container
 COPY . .
 
+EXPOSE 8000
+
 # Default command to run the pipeline
-CMD ["python", "main.py"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
