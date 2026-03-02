@@ -1,11 +1,13 @@
 version: '3.9'
 
 services:
-  nlp-pipeline:
+  sentiment-api:
     build: .
-    container_name: nlp_pipeline
-    volumes:
-      - .:/app   # mounts current folder into container
+    container_name: sentiment-api
+    ports:
+      - "8000:8000"
     stdin_open: true
     tty: true
-    command: python main.py
+    command: uvicorn app:app --host 0.0.0.0 --port 8000
+    volumes:
+      - .:/app
