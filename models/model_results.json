@@ -1,0 +1,30 @@
+{
+    "best_model": "logistic_regression",
+    "metrics": {
+        "logistic_regression": {
+            "cv_mean_auc": 0.9568490749999998,
+            "cv_std_auc": 0.0013973249484506606,
+            "test_auc": 0.9580546000000001
+        },
+        "linear_svm": {
+            "cv_mean_auc": 0.9505226749999999,
+            "cv_std_auc": 0.001415858464964793,
+            "test_auc": 0.95293764
+        },
+        "random_forest": {
+            "cv_mean_auc": 0.9314055874999999,
+            "cv_std_auc": 0.0030087789441768094,
+            "test_auc": 0.9275391800000001
+        },
+        "mlp": {
+            "cv_mean_auc": 0.956695925,
+            "cv_std_auc": 0.000825042752111922,
+            "test_auc": 0.9568510400000001
+        },
+        "pytorch_mlp": {
+            "cv_mean_auc": null,
+            "cv_std_auc": null,
+            "test_auc": 0.9392838600000002
+        }
+    }
+}

@@ -5,6 +5,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 
+from src.torch_classifier import TorchTextClassifier
+
 
 def get_models():
     """
