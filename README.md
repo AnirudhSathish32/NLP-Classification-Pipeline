@@ -67,15 +67,15 @@ side-by-side.
 The following components demonstrate production MLOps patterns but are not
 part of the running application:
  
-- export_onnx.py — exports the PyTorch MLP to ONNX format with onnxruntime validation
-- onnx/handler.py — TorchServe handler showing how the ONNX model would be served at scale
+- `export_onnx.py` — exports the PyTorch MLP to ONNX format with onnxruntime validation
+- `onnx/handler.py` — TorchServe handler showing how the ONNX model would be served at scale
  
 ---
  
 ## Requirements
  
 - Docker + Docker Compose
-- NVIDIA GPU with CUDA 12.8 support (RTX 50 series confirmed working)
+- NVIDIA GPU (6GB+ VRAM recommended)
 - NVIDIA Container Toolkit installed on the host
  
 Verify your GPU is accessible to Docker:
@@ -87,7 +87,13 @@ docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi
  
 ## Setup
  
-### Step 1 — Download the IMDB dataset
+### Step 1 — Clone the repo
+```bash
+git clone <your-repo-url>
+cd <your-repo-name>
+```
+ 
+### Step 2 — Download the IMDB dataset
  
 Download from: https://ai.stanford.edu/~amaas/data/sentiment/
  
@@ -105,19 +111,25 @@ data/
                 └── neg/
 ```
  
-### Step 2 — Train all models
+### Step 3 — Build the Docker images
+```bash
+docker compose build
+```
+ 
+### Step 4 — Train all models
 ```bash
 docker compose run --rm trainer
 ```
  
-This runs main.py then bert_classifier.py sequentially inside a GPU-enabled
-container. All model files are written to the shared models/ volume.
+This runs `main.py` then `bert_classifier.py` sequentially inside a
+GPU-enabled container. All model files are written to the shared `models/`
+volume.
  
-Expected training time on RTX 5070 Ti:
-- Classical models + PyTorch MLP: ~10-15 minutes
-- BERT fine-tuning (3 epochs, max_length=512): ~30-40 minutes
+Expected training time:
+- Classical models + PyTorch MLP: ~10–15 minutes
+- BERT fine-tuning (3 epochs): ~30–40 minutes
  
-### Step 3 — Start the API
+### Step 5 — Start the API
 ```bash
 docker compose up api
 ```
@@ -146,15 +158,15 @@ all three models.
   "review": "This movie was absolutely fantastic!",
   "sklearn": {
     "sentiment": "positive",
-    "confidence": 0.94
+    "confidence": 0.88
   },
   "pytorch": {
     "sentiment": "positive",
-    "confidence": 0.88
+    "confidence": 0.99
   },
   "bert": {
     "sentiment": "positive",
-    "confidence": 0.99
+    "confidence": 0.98
   },
   "best_sklearn_model": "logistic_regression",
   "all_model_metrics": {
@@ -183,19 +195,8 @@ Open http://localhost:5000
  
 ---
  
-## Rebuilding After Code Changes
- 
-```bash
-docker compose build
-docker compose run --rm trainer
-docker compose up api
-```
- 
----
- 
 ## Dataset
  
 IMDB Large Movie Review Dataset
 Andrew L. Maas et al., 2011
 https://ai.stanford.edu/~amaas/data/sentiment/
- 
