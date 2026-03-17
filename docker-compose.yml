@@ -52,7 +52,7 @@ services:
       - MLFLOW_EXPERIMENT_NAME=sentiment_classifier
       # BERT config overrides — adjust for your hardware
       - BERT_BATCH_SIZE=16
-      - BERT_MAX_LENGTH=512
+      - BERT_MAX_LENGTH=256
       - BERT_NUM_EPOCHS=3
     deploy:
       resources:
