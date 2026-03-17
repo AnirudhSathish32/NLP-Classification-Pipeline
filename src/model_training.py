@@ -1,4 +1,5 @@
 import logging
+from random import random
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.ensemble import RandomForestClassifier
@@ -6,7 +7,6 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 
 from src.torch_classifier import TorchTextClassifier
-
 
 def get_models():
     """
@@ -24,6 +24,7 @@ def get_models():
         ),
         "random_forest": RandomForestClassifier(
             n_estimators=200,
+            class_weight="balanced",
             random_state=42
         ),
         "mlp": MLPClassifier(

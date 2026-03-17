@@ -1,6 +1,7 @@
 import os
 import logging
 
+from mlflow_config import configure_mlflow
 from src.utils import setup_logging, ensure_dir
 from src.data_loader import load_dataset
 from src.pipeline import run_pipeline
@@ -15,9 +16,12 @@ TEXT_COLUMN = "text"
 LABEL_COLUMN = "label"
 
 
-def main():
+def main() -> None:
+
     setup_logging()
     ensure_dir("models")
+
+    configure_mlflow()
 
     # Convert IMDB .txt to CSV if needed
     if not os.path.exists(CSV_PATH):

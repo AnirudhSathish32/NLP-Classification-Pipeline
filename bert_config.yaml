@@ -1,0 +1,70 @@
+# bert_config.yaml
+# -----------------
+# All tunable hyperparameters for BERT fine-tuning.
+#
+# What it does:
+#   Single source of truth for every value that affects training behaviour.
+#   bert_classifier.py reads this file at startup via PyYAML.
+#   Every value here is also logged to MLflow so runs are fully reproducible.
+#
+# Override individual values by setting environment variables prefixed
+# with BERT_ (e.g. BERT_LEARNING_RATE=2e-5). bert_classifier.py handles
+# the override logic.
+#
+# Connects to:
+#   bert_classifier.py  — loads this file via load_bert_config()
+#   bert_dataset.py     — consumes max_length, batch_size
+#   MLflow              — all values logged as params at run start
+
+# ---------------------------------------------------------------------------
+# Model
+# ---------------------------------------------------------------------------
+model_name: "bert-base-uncased"   # HuggingFace model identifier
+
+# ---------------------------------------------------------------------------
+# Tokenisation
+# ---------------------------------------------------------------------------
+max_length: 512          # Token sequence length. BERT max is 512.
+                         # 256 covers ~95% of IMDB reviews and halves memory use
+                         # vs 512. Increase if you have GPU memory to spare.
+
+# ---------------------------------------------------------------------------
+# Training
+# ---------------------------------------------------------------------------
+num_epochs: 3            # 2–4 epochs is standard for BERT fine-tuning.
+                         # More epochs risk overfitting on IMDB.
+
+batch_size: 16           # Per-device batch size.
+                         # 16 fits comfortably on a 16GB GPU with max_length=256.
+                         # Reduce to 8 if you get CUDA OOM errors.
+
+learning_rate: 2.0e-5    # Standard BERT fine-tuning range: 1e-5 to 5e-5.
+                         # Higher values cause instability; lower values converge slowly.
+
+weight_decay: 0.01       # L2 regularisation applied to non-bias parameters.
+
+warmup_steps: 500        # Linear LR warmup. Prevents large gradient updates
+                         # in early steps when the classification head is random.
+
+max_grad_norm: 1.0       # Gradient clipping threshold. Stabilises training.
+
+# ---------------------------------------------------------------------------
+# Data splits
+# ---------------------------------------------------------------------------
+val_split: 0.1           # Fraction of training data held out for validation.
+                         # 0.1 → ~22,500 train / 2,500 val from the 25k train set.
+
+random_seed: 42
+
+# ---------------------------------------------------------------------------
+# Checkpointing
+# ---------------------------------------------------------------------------
+checkpoint_dir: "models/bert_checkpoints"   # Best checkpoint saved here.
+checkpoint_metric: "val_roc_auc"            # Metric used to decide "best" epoch.
+
+# ---------------------------------------------------------------------------
+# ONNX export (Phase 2 connection)
+# ---------------------------------------------------------------------------
+onnx_export: true                           # Export best checkpoint to ONNX after training.
+onnx_output_dir: "model_store/bert"         # Separate subdirectory from pytorch_mlp ONNX.
+onnx_opset_version: 17

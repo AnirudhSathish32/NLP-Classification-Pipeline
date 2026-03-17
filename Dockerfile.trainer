@@ -1,0 +1,49 @@
+# Dockerfile.trainer
+# -------------------
+# Training image for the sentiment analysis pipeline.
+#
+# Connects to:
+#   docker-compose.yml  — trainer service definition
+#   main.py             — first script run at container start
+#   bert_classifier.py  — second script run at container start
+#   models/             — shared volume, output destination
+
+FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3.11-distutils \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pip explicitly for Python 3.11
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+
+# Make python3.11 and its pip the defaults
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+# All installs explicitly use python3.11 -m pip to ensure packages land
+# in Python 3.11's site-packages, not the system Python 3.10.
+
+# Install PyTorch with CUDA 12.8 support first
+RUN python3.11 -m pip install --no-cache-dir --upgrade pip && \
+    python3.11 -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu128
+
+# Install remaining dependencies, excluding bare 'torch' to protect CUDA build
+RUN grep -iv "^torch$" requirements.txt > /tmp/requirements_no_torch.txt && \
+    python3.11 -m pip install --no-cache-dir -r /tmp/requirements_no_torch.txt
+
+COPY . .
+
+RUN mkdir -p models experiments/mlruns data/raw
+
+CMD ["sh", "-c", "python3.11 main.py && python3.11 bert_classifier.py"]

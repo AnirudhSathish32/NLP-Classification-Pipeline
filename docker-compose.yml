@@ -1,13 +1,99 @@
 version: '3.9'
-
+ 
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+# Named volumes persist data between container runs.
+# models/     — trained model files shared between trainer and api
+# data/       — raw IMDB dataset and generated CSV
+# experiments/ — MLflow run records
+ 
+volumes:
+  models:
+  data:
+  experiments:
+ 
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+ 
 services:
-  sentiment-api:
-    build: .
+ 
+  # -------------------------------------------------------------------------
+  # trainer
+  # -------------------------------------------------------------------------
+  # Runs main.py then bert_classifier.py sequentially and exits.
+  # Run this once before starting the api service:
+  #
+  #   docker compose run --rm trainer
+  #
+  # Or run both together (trainer finishes first, then api starts):
+  #
+  #   docker compose up
+  #
+  # GPU access is configured via deploy.resources. Requires NVIDIA Container
+  # Toolkit on the host (confirmed working — nvidia-smi accessible in Docker).
+  # -------------------------------------------------------------------------
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile.trainer
+    container_name: sentiment-trainer
+    volumes:
+      # Share trained models with the api service
+      - models:/app/models
+      # Share dataset so prepare_data_csv.py output persists
+      - data:/app/data
+      # Share MLflow records so mlflow ui can read them from the host
+      - experiments:/app/experiments
+    environment:
+      # MLflow writes to the shared experiments volume
+      - MLFLOW_TRACKING_URI=file:./experiments/mlruns
+      - MLFLOW_EXPERIMENT_NAME=sentiment_classifier
+      # BERT config overrides — adjust for your hardware
+      - BERT_BATCH_SIZE=16
+      - BERT_MAX_LENGTH=512
+      - BERT_NUM_EPOCHS=3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # trainer exits cleanly after both training scripts complete
+    restart: "no"
+ 
+  # -------------------------------------------------------------------------
+  # api
+  # -------------------------------------------------------------------------
+  # Runs the FastAPI app. Reads trained models from the shared models/ volume.
+  # Starts automatically and stays running.
+  #
+  # Access the Swagger UI at: http://localhost:8000/docs
+  # -------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
     container_name: sentiment-api
     ports:
       - "8000:8000"
-    stdin_open: true
-    tty: true
-    command: uvicorn app:app --host 0.0.0.0 --port 8000
     volumes:
-      - .:/app
+      # Read trained models written by the trainer service
+      - models:/app/models
+      # Read MLflow records (optional — only needed if app.py ever reads them)
+      - experiments:/app/experiments
+    environment:
+      - SKLEARN_MODEL_PATH=models/best_model.pkl
+      - PYTORCH_MODEL_PATH=models/pytorch_mlp_pipeline.pkl
+      - BERT_CHECKPOINT_DIR=models/bert_checkpoints/best_checkpoint
+      - BERT_CONFIG_PATH=bert_config.yaml
+      - METRICS_PATH=models/model_results.json
+    # Wait for trainer to finish before starting if running docker compose up
+    # Note: depends_on does not wait for trainer to *complete*, only to *start*.
+    # For a clean sequential run use: docker compose run --rm trainer
+    # then: docker compose up api
+    depends_on:
+      - trainer
+    restart: unless-stopped

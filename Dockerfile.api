@@ -1,0 +1,49 @@
+# Dockerfile.api
+# ---------------
+# Serving image for the FastAPI sentiment analysis API.
+#
+# What it does:
+#   Installs inference-only dependencies and starts the FastAPI app via
+#   uvicorn on port 8000. Loads pre-trained models from the shared
+#   models/ volume written by the trainer service.
+#
+# Lighter than Dockerfile.trainer:
+#   Does not install MLflow, torch-model-archiver, torchserve, or other
+#   training-only dependencies. BERT inference only needs the transformers
+#   library and torch — no CUDA required since inference on CPU is fast
+#   enough for a single-user API. If you want GPU inference add the
+#   nvidia base image and deploy.resources block from the trainer service.
+#
+# Connects to:
+#   docker-compose.yml  — api service definition
+#   app.py              — FastAPI application entry point
+#   models/             — shared volume, reads best_model.pkl,
+#                         pytorch_mlp_pipeline.pkl, bert_checkpoints/
+
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+# Install PyTorch CPU-only build — much smaller image, sufficient for inference
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN mkdir -p models experiments/mlruns data/raw
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
