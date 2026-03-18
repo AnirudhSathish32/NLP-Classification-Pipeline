@@ -12,7 +12,8 @@ volumes:
   models:
   data:
   experiments:
- 
+  nlp-classification-pipeline_experiments:
+    external: true
 # ---------------------------------------------------------------------------
 # Services
 # ---------------------------------------------------------------------------
@@ -97,3 +98,22 @@ services:
     depends_on:
       - trainer
     restart: unless-stopped
+
+  mlflow:
+    image: python:3.11-slim
+    container_name: sentiment-mlflow
+    ports:
+      - "5001:5000"
+    volumes:
+      - nlp-classification-pipeline_experiments:/app/experiments
+    environment:
+      - MLFLOW_HOST=0.0.0.0
+      - MLFLOW_PORT=5000
+      - GUNICORN_CMD_ARGS=--bind=0.0.0.0:5000
+    command: >
+      sh -c "pip install mlflow --quiet &&
+             mlflow ui --backend-store-uri file:///app/experiments/mlruns
+             --host 0.0.0.0 --port 5000"
+    restart: unless-stopped
+
+  
