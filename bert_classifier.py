@@ -2,12 +2,17 @@
 bert_classifier.py
 ------------------
 BERT fine-tuning pipeline for IMDB sentiment classification.
-
+ 
 Changes from Phase 3:
-    After training completes, the best test ROC-AUC is written into
-    models/model_results.json so app.py can display it alongside the
-    sklearn and PyTorch metrics in the compare endpoint response.
-
+    - save_checkpoint() now saves the tokenizer alongside the model weights
+      so app.py loads the exact tokenizer used during training.
+    - fine_tune() now accepts tokenizer as a parameter and passes it to
+      save_checkpoint().
+    - run_bert_pipeline() passes tokenizer into fine_tune().
+    - After training completes, the best test ROC-AUC is written into
+      models/model_results.json so app.py can display it alongside the
+      sklearn and PyTorch metrics in the compare endpoint response.
+ 
 Connects to:
     bert_config.yaml        — all hyperparameters
     bert_dataset.py         — IMDBDataset, build_dataloaders, load_tokenizer
@@ -16,13 +21,13 @@ Connects to:
     models/model_results.json — appends bert entry after training
     app.py                  — loads bert checkpoint at startup
 """
-
+ 
 import argparse
 import json
 import logging
 import os
 from typing import Any, Dict, Optional, Tuple
-
+ 
 import mlflow
 import numpy as np
 import torch
@@ -41,42 +46,42 @@ from transformers import (
     BertTokenizerFast,
     get_linear_schedule_with_warmup,
 )
-
+ 
 from bert_dataset import build_dataloaders, load_tokenizer
 from mlflow_config import configure_mlflow
 from src.data_loader import load_dataset
-
+ 
 logger = logging.getLogger(__name__)
-
+ 
 DEFAULT_CONFIG_PATH = os.environ.get("BERT_CONFIG_PATH", "bert_config.yaml")
 DEFAULT_DATA_CSV    = os.environ.get(
     "BERT_DATA_CSV", os.path.join("data", "raw", "dataset.csv")
 )
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-
+ 
 def load_bert_config(config_path: str) -> Dict[str, Any]:
     """
     Load bert_config.yaml and apply environment variable overrides.
-
+ 
     Parameters:
         config_path (str): Path to bert_config.yaml.
-
+ 
     Returns:
         dict: Fully resolved configuration dictionary.
-
+ 
     Connects to:
         bert_config.yaml — primary source of all hyperparameters.
     """
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"BERT config not found at '{config_path}'.")
-
+ 
     with open(config_path) as f:
         config = yaml.safe_load(f)
-
+ 
     env_overrides = {
         "BERT_LEARNING_RATE":   ("learning_rate",   float),
         "BERT_BATCH_SIZE":      ("batch_size",       int),
@@ -90,28 +95,28 @@ def load_bert_config(config_path: str) -> Dict[str, Any]:
         "BERT_CHECKPOINT_DIR":  ("checkpoint_dir",   str),
         "BERT_ONNX_OUTPUT_DIR": ("onnx_output_dir",  str),
     }
-
+ 
     for env_key, (config_key, cast) in env_overrides.items():
         val = os.environ.get(env_key)
         if val is not None:
             config[config_key] = cast(val)
             logger.info(f"Config override: {config_key}={config[config_key]}")
-
+ 
     return config
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # Model + device
 # ---------------------------------------------------------------------------
-
+ 
 def build_bert_model(model_name: str, num_labels: int = 2) -> BertForSequenceClassification:
     """
     Load pre-trained BERT with a classification head.
-
+ 
     Parameters:
         model_name  (str): HuggingFace model identifier.
         num_labels  (int): Number of output classes.
-
+ 
     Returns:
         BertForSequenceClassification
     """
@@ -119,8 +124,8 @@ def build_bert_model(model_name: str, num_labels: int = 2) -> BertForSequenceCla
     model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
     logger.info(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
     return model
-
-
+ 
+ 
 def get_device() -> torch.device:
     """Select best available device: CUDA > MPS > CPU."""
     if torch.cuda.is_available():
@@ -133,12 +138,12 @@ def get_device() -> torch.device:
         device = torch.device("cpu")
         logger.info("Using CPU")
     return device
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # Evaluation
 # ---------------------------------------------------------------------------
-
+ 
 def evaluate_epoch(
     model: BertForSequenceClassification,
     loader: DataLoader,
@@ -147,40 +152,40 @@ def evaluate_epoch(
 ) -> Dict[str, float]:
     """
     Full evaluation pass over a DataLoader.
-
+ 
     Parameters:
         model       (BertForSequenceClassification)
         loader      (DataLoader)
         device      (torch.device)
         split_name  (str): Prefix for metric keys.
-
+ 
     Returns:
         dict: ROC-AUC, accuracy, F1, precision, recall.
     """
     model.eval()
     all_labels, all_probs, all_preds = [], [], []
-
+ 
     with torch.no_grad():
         for batch in loader:
             input_ids      = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             token_type_ids = batch["token_type_ids"].to(device)
             labels         = batch["labels"]
-
+ 
             outputs = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 token_type_ids=token_type_ids,
             )
-
+ 
             logits = outputs.logits.cpu()
             probs  = torch.softmax(logits, dim=1)[:, 1].numpy()
             preds  = torch.argmax(logits, dim=1).numpy()
-
+ 
             all_labels.extend(labels.numpy())
             all_probs.extend(probs)
             all_preds.extend(preds)
-
+ 
     metrics = {
         f"{split_name}_roc_auc":   roc_auc_score(all_labels, all_probs),
         f"{split_name}_accuracy":  accuracy_score(all_labels, all_preds),
@@ -188,7 +193,7 @@ def evaluate_epoch(
         f"{split_name}_precision": precision_score(all_labels, all_preds, average="macro", zero_division=0),
         f"{split_name}_recall":    recall_score(all_labels, all_preds, average="macro", zero_division=0),
     }
-
+ 
     logger.info(
         f"{split_name.upper()} — "
         f"ROC-AUC: {metrics[f'{split_name}_roc_auc']:.4f} | "
@@ -196,80 +201,96 @@ def evaluate_epoch(
         f"F1: {metrics[f'{split_name}_f1']:.4f}"
     )
     return metrics
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # Checkpointing
 # ---------------------------------------------------------------------------
-
+ 
 def save_checkpoint(
     model: BertForSequenceClassification,
     checkpoint_dir: str,
     epoch: int,
     metric_value: float,
+    tokenizer: BertTokenizerFast = None,
 ) -> str:
     """
     Save the current best checkpoint using HuggingFace save_pretrained().
-
+ 
+    What it does:
+        Saves model weights and tokenizer files to best_checkpoint/ so that
+        app.py can load both from the same directory using from_pretrained().
+        Without the tokenizer files, app.py would fall back to downloading
+        bert-base-uncased which may not match the training tokenizer.
+ 
     Parameters:
         model          (BertForSequenceClassification)
         checkpoint_dir (str)
         epoch          (int)
         metric_value   (float)
-
+        tokenizer      (BertTokenizerFast): If provided, saved alongside model.
+ 
     Returns:
         str: Path to the saved checkpoint directory.
-
+ 
     Connects to:
-        app.py — loads from this exact directory at startup.
+        app.py — loads model and tokenizer from this exact directory at startup.
     """
     best_dir = os.path.join(checkpoint_dir, "best_checkpoint")
     os.makedirs(best_dir, exist_ok=True)
     model.save_pretrained(best_dir)
-    
+ 
+    # Save tokenizer alongside model so app.py loads the correct tokenizer
+    if tokenizer is not None:
+        tokenizer.save_pretrained(best_dir)
+        logger.info(f"Tokenizer saved to '{best_dir}'")
+ 
     with open(os.path.join(checkpoint_dir, "best_checkpoint_meta.txt"), "w") as f:
         f.write(f"epoch={epoch}\nval_roc_auc={metric_value:.6f}\n")
-
+ 
     logger.info(f"Checkpoint saved: epoch={epoch}, val_roc_auc={metric_value:.4f} → '{best_dir}'")
     return best_dir
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # Training loop
 # ---------------------------------------------------------------------------
-
+ 
 def fine_tune(
     model: BertForSequenceClassification,
     train_loader: DataLoader,
     val_loader: DataLoader,
     config: Dict[str, Any],
     device: torch.device,
+    tokenizer: BertTokenizerFast = None,
 ) -> Tuple[str, Dict[str, float]]:
     """
     Fine-tune BERT and checkpoint the best epoch by val ROC-AUC.
-
+ 
     Parameters:
         model        (BertForSequenceClassification)
         train_loader (DataLoader)
         val_loader   (DataLoader)
         config       (dict): From load_bert_config().
         device       (torch.device)
-
+        tokenizer    (BertTokenizerFast): Passed to save_checkpoint so it is
+                     saved alongside the model weights.
+ 
     Returns:
         Tuple[str, dict]: (best_checkpoint_dir, best_val_metrics)
-
+ 
     Connects to:
         run_bert_pipeline() — called inside the MLflow parent run.
     """
     model.to(device)
-
+ 
     num_epochs     = config["num_epochs"]
     warmup_steps   = config["warmup_steps"]
     max_grad_norm  = config["max_grad_norm"]
     checkpoint_dir = config["checkpoint_dir"]
-
+ 
     os.makedirs(checkpoint_dir, exist_ok=True)
-
+ 
     no_decay = ["bias", "LayerNorm.weight"]
     param_groups = [
         {
@@ -282,72 +303,74 @@ def fine_tune(
         },
     ]
     optimizer = AdamW(param_groups, lr=config["learning_rate"])
-
+ 
     total_steps = len(train_loader) * num_epochs
     scheduler   = get_linear_schedule_with_warmup(
         optimizer,
         num_warmup_steps=warmup_steps,
         num_training_steps=total_steps,
     )
-
+ 
     best_val_auc        = -1.0
     best_checkpoint_dir = ""
     best_val_metrics: Dict[str, float] = {}
-
+ 
     for epoch in range(1, num_epochs + 1):
         logger.info(f"--- Epoch {epoch}/{num_epochs} ---")
         model.train()
-
+ 
         epoch_loss  = 0.0
         num_batches = 0
-
+ 
         for batch in train_loader:
             input_ids      = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             token_type_ids = batch["token_type_ids"].to(device)
             labels         = batch["labels"].to(device)
-
+ 
             optimizer.zero_grad()
-
+ 
             outputs = model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 token_type_ids=token_type_ids,
                 labels=labels,
             )
-
+ 
             loss = outputs.loss
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             optimizer.step()
             scheduler.step()
-
+ 
             epoch_loss  += loss.item()
             num_batches += 1
-
+ 
         avg_loss = epoch_loss / num_batches
         logger.info(f"Epoch {epoch} avg train loss: {avg_loss:.4f}")
-
+ 
         val_metrics = evaluate_epoch(model, val_loader, device, split_name="val")
-
+ 
         mlflow.log_metric("train_loss", avg_loss, step=epoch)
         for k, v in val_metrics.items():
             mlflow.log_metric(k, v, step=epoch)
-
+ 
         val_auc = val_metrics["val_roc_auc"]
         if val_auc > best_val_auc:
             best_val_auc        = val_auc
             best_val_metrics    = val_metrics
-            best_checkpoint_dir = save_checkpoint(model, checkpoint_dir, epoch, val_auc)
-
+            best_checkpoint_dir = save_checkpoint(
+                model, checkpoint_dir, epoch, val_auc, tokenizer=tokenizer
+            )
+ 
     logger.info(f"Training complete. Best val ROC-AUC: {best_val_auc:.4f}")
     return best_checkpoint_dir, best_val_metrics
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # ONNX export
 # ---------------------------------------------------------------------------
-
+ 
 def export_bert_to_onnx(
     checkpoint_dir: str,
     config: Dict[str, Any],
@@ -355,25 +378,25 @@ def export_bert_to_onnx(
 ) -> str:
     """
     Export best BERT checkpoint to ONNX.
-
+ 
     Parameters:
         checkpoint_dir (str)
         config         (dict)
         tokenizer      (BertTokenizerFast)
-
+ 
     Returns:
         str: Path to exported .onnx file.
     """
     onnx_output_dir = config["onnx_output_dir"]
     opset_version   = config.get("onnx_opset_version", 17)
     max_length      = config["max_length"]
-
+ 
     os.makedirs(onnx_output_dir, exist_ok=True)
     onnx_path = os.path.join(onnx_output_dir, "bert_sentiment.onnx")
-
+ 
     model = BertForSequenceClassification.from_pretrained(checkpoint_dir)
     model.eval()
-
+ 
     encoding = tokenizer(
         "This film was surprisingly good",
         max_length=max_length,
@@ -381,7 +404,7 @@ def export_bert_to_onnx(
         truncation=True,
         return_tensors="pt",
     )
-
+ 
     torch.onnx.export(
         model,
         (encoding["input_ids"], encoding["attention_mask"], encoding["token_type_ids"]),
@@ -397,37 +420,25 @@ def export_bert_to_onnx(
         opset_version=opset_version,
         export_params=True,
     )
-
+ 
     logger.info(f"BERT ONNX exported to '{onnx_path}'")
     return onnx_path
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # model_results.json update
 # ---------------------------------------------------------------------------
-
+ 
 def update_model_results(test_auc: float, results_path: str = "models/model_results.json") -> None:
     """
     Append BERT's test ROC-AUC into model_results.json.
-
-    What it does:
-        Reads the existing model_results.json written by src/pipeline.py
-        and adds a 'bert' entry so app.py can display BERT's metrics
-        alongside the sklearn and PyTorch results in the compare endpoint.
-
-        Safe to call even if model_results.json does not yet exist —
-        it will create a minimal structure in that case.
-
+ 
     Parameters:
         test_auc     (float): BERT's test ROC-AUC from evaluate_epoch().
         results_path (str):   Path to model_results.json.
-
-    Returns:
-        None
-
+ 
     Connects to:
-        app.py — reads model_results.json at startup to populate
-                 the all_model_metrics field in /predict responses.
+        app.py — reads model_results.json at startup.
         src/pipeline.py — originally creates model_results.json.
     """
     if os.path.exists(results_path):
@@ -439,23 +450,23 @@ def update_model_results(test_auc: float, results_path: str = "models/model_resu
             "Run main.py before bert_classifier.py for complete results."
         )
         data = {"best_model": "unknown", "metrics": {}}
-
+ 
     data["metrics"]["bert"] = {
         "cv_mean_auc": None,
         "cv_std_auc":  None,
         "test_auc":    float(test_auc),
     }
-
+ 
     with open(results_path, "w") as f:
         json.dump(data, f, indent=4)
-
+ 
     logger.info(f"BERT test_auc={test_auc:.4f} written to '{results_path}'")
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # Top-level orchestration
 # ---------------------------------------------------------------------------
-
+ 
 def run_bert_pipeline(
     config_path: str = DEFAULT_CONFIG_PATH,
     data_csv: str    = DEFAULT_DATA_CSV,
@@ -463,12 +474,12 @@ def run_bert_pipeline(
 ) -> None:
     """
     Full BERT fine-tuning pipeline: load → tokenise → train → evaluate → export.
-
+ 
     Parameters:
         config_path (str): Path to bert_config.yaml.
         data_csv    (str): Path to IMDB CSV.
         skip_onnx   (bool): Skip ONNX export if True.
-
+ 
     Connects to:
         mlflow_config.py       — configure_mlflow()
         bert_dataset.py        — build_dataloaders()
@@ -481,18 +492,18 @@ def run_bert_pipeline(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s"
     )
-
+ 
     config = load_bert_config(config_path)
     configure_mlflow()
-
+ 
     torch.manual_seed(config["random_seed"])
     np.random.seed(config["random_seed"])
-
+ 
     logger.info(f"Loading dataset from '{data_csv}'")
     X, y = load_dataset(data_csv, text_col="text", label_col="label")
-
+ 
     tokenizer = load_tokenizer(config["model_name"])
-
+ 
     train_loader, val_loader, test_loader = build_dataloaders(
         X, y,
         tokenizer=tokenizer,
@@ -501,10 +512,10 @@ def run_bert_pipeline(
         val_split=config["val_split"],
         random_seed=config["random_seed"],
     )
-
+ 
     device = get_device()
     model  = build_bert_model(config["model_name"])
-
+ 
     with mlflow.start_run(run_name="bert_fine_tuning") as run:
         mlflow.log_params({
             "model_name":    config["model_name"],
@@ -519,50 +530,50 @@ def run_bert_pipeline(
             "random_seed":   config["random_seed"],
             "device":        str(device),
         })
-
+ 
+        # Pass tokenizer into fine_tune so it gets saved with the checkpoint
         best_checkpoint_dir, best_val_metrics = fine_tune(
-            model, train_loader, val_loader, config, device
+            model, train_loader, val_loader, config, device, tokenizer=tokenizer
         )
-
+ 
         logger.info("Loading best checkpoint for final test evaluation...")
         best_model = BertForSequenceClassification.from_pretrained(best_checkpoint_dir)
         best_model.to(device)
-
+ 
         test_metrics = evaluate_epoch(best_model, test_loader, device, split_name="test")
-
+ 
         mlflow.log_metrics(test_metrics)
         mlflow.log_metrics({f"best_{k}": v for k, v in best_val_metrics.items()})
         mlflow.log_artifacts(best_checkpoint_dir, artifact_path="bert_checkpoint")
-
-        # Write BERT's AUC into model_results.json for app.py
+ 
         update_model_results(test_metrics["test_roc_auc"])
-
+ 
         if config.get("onnx_export", True) and not skip_onnx:
             onnx_path = export_bert_to_onnx(best_checkpoint_dir, config, tokenizer)
             mlflow.log_artifact(onnx_path, artifact_path="bert_onnx")
         else:
             logger.info("ONNX export skipped.")
-
+ 
         logger.info(f"MLflow run complete: {run.info.run_id}")
-
+ 
     print("\n✅ BERT fine-tuning complete.")
     print(f"   Best checkpoint : {best_checkpoint_dir}")
     print(f"   Test ROC-AUC    : {test_metrics['test_roc_auc']:.4f}")
     print(f"   Test Accuracy   : {test_metrics['test_accuracy']:.4f}")
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-
+ 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fine-tune BERT on IMDB sentiment")
     parser.add_argument("--config",    default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--data-csv",  default=DEFAULT_DATA_CSV)
     parser.add_argument("--skip-onnx", action="store_true")
     return parser.parse_args()
-
-
+ 
+ 
 if __name__ == "__main__":
     args = parse_args()
     run_bert_pipeline(
