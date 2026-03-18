@@ -226,7 +226,7 @@ def save_checkpoint(
     best_dir = os.path.join(checkpoint_dir, "best_checkpoint")
     os.makedirs(best_dir, exist_ok=True)
     model.save_pretrained(best_dir)
-
+    
     with open(os.path.join(checkpoint_dir, "best_checkpoint_meta.txt"), "w") as f:
         f.write(f"epoch={epoch}\nval_roc_auc={metric_value:.6f}\n")
 

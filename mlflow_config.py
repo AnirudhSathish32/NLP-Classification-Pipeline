@@ -31,7 +31,7 @@ import mlflow
 # Local filesystem URI — all run data lands in experiments/mlruns/
 MLFLOW_TRACKING_URI: str = os.environ.get(
     "MLFLOW_TRACKING_URI",
-    "file:./experiments/mlruns"
+    "file:///app/experiments/mlruns"
 )
 
 EXPERIMENT_NAME: str = os.environ.get(
@@ -65,13 +65,7 @@ def configure_mlflow() -> str:
 
     experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
     if experiment is None:
-        experiment_id = mlflow.create_experiment(
-            EXPERIMENT_NAME,
-            artifact_location=os.path.join(
-                MLFLOW_TRACKING_URI.replace("file:", ""),
-                EXPERIMENT_NAME
-            )
-        )
+        experiment_id = mlflow.create_experiment(EXPERIMENT_NAME)
         logger.info(f"Created MLflow experiment '{EXPERIMENT_NAME}' (id={experiment_id})")
     else:
         experiment_id = experiment.experiment_id

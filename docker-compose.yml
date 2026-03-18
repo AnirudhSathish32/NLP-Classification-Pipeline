@@ -49,7 +49,7 @@ services:
       - experiments:/app/experiments
     environment:
       # MLflow writes to the shared experiments volume
-      - MLFLOW_TRACKING_URI=file:./experiments/mlruns
+      - MLFLOW_TRACKING_URI=file:///app/experiments/mlruns
       - MLFLOW_EXPERIMENT_NAME=sentiment_classifier
       # BERT config overrides — adjust for your hardware
       - BERT_BATCH_SIZE=16
@@ -86,11 +86,11 @@ services:
       # Read MLflow records (optional — only needed if app.py ever reads them)
       - experiments:/app/experiments
     environment:
-      - SKLEARN_MODEL_PATH=models/best_model.pkl
-      - PYTORCH_MODEL_PATH=models/pytorch_mlp_pipeline.pkl
-      - BERT_CHECKPOINT_DIR=models/bert_checkpoints/best_checkpoint
-      - BERT_CONFIG_PATH=bert_config.yaml
-      - METRICS_PATH=models/model_results.json
+      - SKLEARN_MODEL_PATH=/app/models/best_model.pkl
+      - PYTORCH_MODEL_PATH=/app/models/pytorch_mlp_pipeline.pkl
+      - BERT_CHECKPOINT_DIR=/app/models/bert_checkpoints/best_checkpoint
+      - BERT_CONFIG_PATH=/app/bert_config.yaml
+      - METRICS_PATH=/app/models/model_results.json
     # Wait for trainer to finish before starting if running docker compose up
     # Note: depends_on does not wait for trainer to *complete*, only to *start*.
     # For a clean sequential run use: docker compose run --rm trainer

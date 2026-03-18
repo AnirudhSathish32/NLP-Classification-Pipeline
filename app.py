@@ -67,6 +67,8 @@ _BERT_MAX_LENGTH = 256
 if os.path.exists(BERT_CONFIG_PATH):
     with open(BERT_CONFIG_PATH) as _f:
         _BERT_MAX_LENGTH = yaml.safe_load(_f).get("max_length", 256)
+        size = os.path.getsize(os.path.join(BERT_CHECKPOINT_DIR, "model.safetensors"))
+        logger.info(f"BERT model.safetensors size: {size / 1024 / 1024:.1f} MB")
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +282,20 @@ def _run_bert(text: str) -> ModelResult:
         sentiment  = "positive" if class_idx == 1 else "negative"
         confidence = float(probs[class_idx].item())
 
+        with torch.no_grad():
+            outputs = bert_model(
+            input_ids=encoding["input_ids"],
+            attention_mask=encoding["attention_mask"],
+            token_type_ids=encoding["token_type_ids"],
+            )
+
+        # Add this temporarily
+        print(f"BERT logits: {outputs.logits}")
+        print(f"BERT probs: {torch.softmax(outputs.logits, dim=1)}")
+
+
         return ModelResult(sentiment=sentiment, confidence=confidence)
+        
     except Exception as exc:
         logger.error(f"BERT inference failed: {exc}")
         return ModelResult(sentiment="unknown", confidence=0.0, error=str(exc))
