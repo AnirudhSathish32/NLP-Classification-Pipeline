@@ -16,8 +16,8 @@ Returns:
 
 Connects to:
     src/pipeline.py     — classical ML training runs
-    bert_classifier.py  — BERT fine-tuning runs (Phase 3)
-    export_onnx.py      — ONNX artifact logging (Phase 2)
+    bert_classifier.py  — BERT fine-tuning runs 
+    export_onnx.py      — ONNX artifact logging 
 """
 
 import os

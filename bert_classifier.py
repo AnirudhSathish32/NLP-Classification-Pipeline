@@ -3,16 +3,6 @@ bert_classifier.py
 ------------------
 BERT fine-tuning pipeline for IMDB sentiment classification.
  
-Changes from Phase 3:
-    - save_checkpoint() now saves the tokenizer alongside the model weights
-      so app.py loads the exact tokenizer used during training.
-    - fine_tune() now accepts tokenizer as a parameter and passes it to
-      save_checkpoint().
-    - run_bert_pipeline() passes tokenizer into fine_tune().
-    - After training completes, the best test ROC-AUC is written into
-      models/model_results.json so app.py can display it alongside the
-      sklearn and PyTorch metrics in the compare endpoint response.
- 
 Connects to:
     bert_config.yaml        — all hyperparameters
     bert_dataset.py         — IMDBDataset, build_dataloaders, load_tokenizer
